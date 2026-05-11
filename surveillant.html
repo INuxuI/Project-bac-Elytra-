@@ -225,12 +225,55 @@
             throw new Error('Échec du chargement des modèles face-api.js: ' + (lastError && lastError.message ? lastError.message : 'unknown'));
         }
 
+        async function getSavedFaceDescriptorsFromSupabase(identifiant) {
+            try {
+                const { data, error } = await supabaseClient
+                    .from('face_descriptors')
+                    .select('descriptors')
+                    .eq('eleve_identifiant', identifiant)
+                    .single();
+
+                if (error || !data) return [];
+                const descriptors = data.descriptors || [];
+                return descriptors.map(d => new Float32Array(d));
+            } catch (err) {
+                console.warn('getSavedFaceDescriptorsFromSupabase error', err);
+                return [];
+            }
+        }
+
+        async function saveFaceDescriptorToSupabase(identifiant, descriptor) {
+            try {
+                const descArray = Array.from(descriptor);
+                const { data: existing, error: checkError } = await supabaseClient
+                    .from('face_descriptors')
+                    .select('descriptors')
+                    .eq('eleve_identifiant', identifiant)
+                    .single();
+
+                if (existing && existing.descriptors) {
+                    const updated = [...existing.descriptors, descArray];
+                    await supabaseClient
+                        .from('face_descriptors')
+                        .update({ descriptors: updated, updated_at: new Date() })
+                        .eq('eleve_identifiant', identifiant);
+                } else {
+                    await supabaseClient
+                        .from('face_descriptors')
+                        .insert([{ eleve_identifiant: identifiant, descriptors: [descArray] }]);
+                }
+            } catch (err) {
+                console.error('saveFaceDescriptorToSupabase error', err);
+                throw err;
+            }
+        }
+
         function getSavedFaceDescriptors() {
             const stored = JSON.parse(localStorage.getItem(FACE_STORAGE_KEY) || '[]');
             return stored.map(entry => new faceapi.LabeledFaceDescriptors(entry.label, entry.descriptors.map(d => new Float32Array(d))));
         }
 
-        function updateFaceLabelList() {
+        async function updateFaceLabelList() {
             const stored = JSON.parse(localStorage.getItem(FACE_STORAGE_KEY) || '[]');
             const list = document.getElementById('face-label-list');
             if (!list) return;
@@ -239,6 +282,20 @@
                 return;
             }
             list.innerHTML = '<strong>Visages enregistrés :</strong><br>' + stored.map(v => `${v.label} — ${v.descriptors.length} échantillon(s)`).join('<br>');
+        }
+
+        async function rebuildFaceMatcherFromSupabase(identifiant) {
+            try {
+                const descriptors = await getSavedFaceDescriptorsFromSupabase(identifiant);
+                if (descriptors.length > 0) {
+                    faceMatcher = new faceapi.FaceMatcher([new faceapi.LabeledFaceDescriptors(identifiant, descriptors)], 0.55);
+                } else {
+                    faceMatcher = null;
+                }
+                updateFaceLabelList();
+            } catch (err) {
+                console.warn('rebuildFaceMatcherFromSupabase error', err);
+            }
         }
 
         async function rebuildFaceMatcher() {
@@ -333,22 +390,23 @@
         }
 
         async function registerFace() {
-            if (!faceActive) return notify("Active d'abord la caméra.", "error");
-            const label = prompt("Entrez l'identifiant ou le nom de l'élève (utilisez l'identifiant pour la vérif QR+visage) :");
+            if (!faceActive) return notify("Activez la caméra d'abord.", "error");
+            const label = prompt("Identifiant de l'élève (ex: eleve001) :");
             if (!label) return;
             const video = document.getElementById('face-video');
             const detection = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
             if (!detection) return notify("Aucun visage détecté.", "error");
-            const descriptor = Array.from(detection.descriptor);
-            const stored = JSON.parse(localStorage.getItem(FACE_STORAGE_KEY) || '[]');
-            const entry = stored.find(item => item.label === label);
-            if (entry) entry.descriptors.push(descriptor); else stored.push({ label, descriptors: [descriptor] });
-            localStorage.setItem(FACE_STORAGE_KEY, JSON.stringify(stored));
-            await rebuildFaceMatcher();
-            notify(`Visage enregistré pour ${label}`);
+            try {
+                await saveFaceDescriptorToSupabase(label, detection.descriptor);
+                await rebuildFaceMatcherFromSupabase(label);
+                notify(`✅ Visage enregistré pour ${label} dans Supabase`);
+            } catch (err) {
+                console.error('registerFace error', err);
+                notify("Erreur lors de l'enregistrement du visage", "error");
+            }
         }
 
-        // Vérifie le visage pour un identifiant donné (utilisé après scan QR)
+        // Vérifie le visage pour un identifiant donné (utilisé après scan QR) — charge depuis Supabase
         async function verifyFaceForID(identifiant) {
             const status = document.getElementById('face-status') || document.getElementById('result-message');
             if (!status) return false;
@@ -356,16 +414,15 @@
 
             try {
                 await loadFaceModels();
-                await rebuildFaceMatcher();
+                await rebuildFaceMatcherFromSupabase(identifiant);
             } catch (err) {
-                console.error('loadFaceModels failed', err);
+                console.error('loadFaceModels or rebuildFaceMatcherFromSupabase failed', err);
                 status.innerText = 'Échec du chargement des modèles : ' + (err && err.message ? err.message : String(err));
                 return false;
             }
 
-            const stored = JSON.parse(localStorage.getItem(FACE_STORAGE_KEY) || '[]');
-            const entry = stored.find(e => e.label === identifiant);
-            if (!entry) {
+            const savedDescriptors = await getSavedFaceDescriptorsFromSupabase(identifiant);
+            if (savedDescriptors.length === 0) {
                 status.innerText = `Aucun profil facial pour ${identifiant}. Utilisez "Enregistrer visage".`;
                 return false;
             }
