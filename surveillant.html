@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <style>
         @keyframes blink {
             0% { opacity: 1; }
@@ -43,6 +44,24 @@
                         <div id="reader" style="width: 100%; background: #000;"></div>
                         <div id="result-message" style="padding:20px; text-align:center; font-weight: 600;">Prêt à scanner...</div>
                     </div>
+
+                    <div class="card" style="padding: 25px; border: 2px solid var(--accent-theme);">
+                        <h3 style="margin-top:0; margin-bottom:15px;">Reconnaissance faciale</h3>
+                        <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start;">
+                            <div style="flex: 1; min-width: 280px; position: relative;">
+                                <video id="face-video" autoplay muted playsinline style="width: 100%; border-radius: 22px; background: #000; display: block;"></video>
+                                <canvas id="face-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;"></canvas>
+                            </div>
+                            <div style="flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: 12px;">
+                                <button id="btn-start-face" onclick="startFaceRecognition()" style="padding:15px; border-radius:15px; border:none; background:#2563eb; color:white; font-weight:800; cursor:pointer;">Démarrer la reconnaissance</button>
+                                <button id="btn-register-face" onclick="registerFace()" style="padding:15px; border-radius:15px; border:none; background:#4ade80; color:#0f172a; font-weight:800; cursor:pointer;">Enregistrer visage</button>
+                                <button id="btn-stop-face" onclick="stopFaceRecognition()" style="padding:15px; border-radius:15px; border:none; background:#ef4444; color:white; font-weight:800; cursor:pointer;">Arrêter la reconnaissance</button>
+                                <div id="face-status" style="padding:15px; background: rgba(255,255,255,0.05); border-radius: 20px; min-height: 90px; color:white;">Aucun visage reconnu.</div>
+                                <div id="face-label-list" style="padding:15px; background: rgba(255,255,255,0.05); border-radius: 20px; color:white; max-height: 220px; overflow-y: auto;">Visages connus : aucun</div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="card" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; text-align: center;">
                         <div><small>ENTRÉES</small><div id="total-entrees" style="font-size: 1.8rem; font-weight:800; color:#34c759;">0</div></div>
                         <div><small>ALERTES</small><div id="total-alertes" style="font-size: 1.8rem; font-weight:800; color:#ef4444;">0</div></div>
@@ -62,6 +81,14 @@
     <script>
         const html5QrCode = new Html5Qrcode("reader");
         let isProcessing = false; 
+
+        async function stopQrCamera() {
+            try {
+                await html5QrCode.stop();
+            } catch (err) {
+                console.warn('Impossible d\'arrêter le scanner QR :', err);
+            }
+        }
 
         function startCamera() {
             const config = {
@@ -83,57 +110,311 @@
             });
         }
 
-        // FONCTION DE VÉRIFICATION DANS LA BASE DE DONNÉES
+        // FONCTION DE VÉRIFICATION DANS LA BASE DE DONNÉES + vérif faciale
         async function processScan(idScanne) {
-            isProcessing = true; 
+            if (isProcessing) return;
+            isProcessing = true;
             const resultMsg = document.getElementById('result-message');
-            resultMsg.innerHTML = "🔍 Vérification en cours...";
-            
+            resultMsg.innerHTML = "🔍 Vérification du QR...";
+
             try {
+                // Try dynamic QR payload first (format: identifiant:timeslice:hash)
+                let identified = null;
+                try {
+                    if (typeof verifyDynamicQrPayload === 'function' && idScanne.includes(':')) {
+                        identified = await verifyDynamicQrPayload(idScanne);
+                    }
+                } catch (e) {
+                    console.warn('verifyDynamicQrPayload failed', e);
+                }
+
+                if (!identified && idScanne.includes(':')) {
+                    // Looks like a dynamic QR but failed verification
+                    resultMsg.innerHTML = `<span style="color:#ef4444; font-size: 1rem;">❌ QR invalide ou expiré</span>`;
+                    const alertesEl = document.getElementById('total-alertes');
+                    alertesEl.innerText = parseInt(alertesEl.innerText) + 1;
+                    setTimeout(() => {
+                        isProcessing = false;
+                        resultMsg.innerHTML = "Prêt à scanner...";
+                    }, 3000);
+                    return;
+                }
+
+                const queryIdent = identified || idScanne.trim();
+
                 // On cherche l'élève dans la table 'eleves'
                 const { data: eleve, error } = await supabaseClient
                     .from('eleves')
                     .select('*')
-                    .eq('identifiant', idScanne.trim())
+                    .eq('identifiant', queryIdent)
                     .single();
 
                 if (eleve) {
-                    // ✅ TROUVÉ DANS LA BASE
-                    resultMsg.innerHTML = `<span style="color:#34c759; font-size: 1.2rem;">✅ CORRECT : ${eleve.nom}</span>`;
-                    
-                    // Mise à jour du compteur
-                    const entreesEl = document.getElementById('total-entrees');
-                    entreesEl.innerText = parseInt(entreesEl.innerText) + 1;
+                    // Demande la vérification faciale après QR valide
+                    resultMsg.innerHTML = `<span style="color:#34c759; font-size: 1rem;">QR OK : ${eleve.nom} — Montre ton visage...</span>`;
+                    const verified = await verifyFaceForID(eleve.identifiant);
 
-                    // Ajout au log
-                    const log = document.getElementById('scan-log');
-                    const div = document.createElement('div');
-                    div.className = 'glass-card';
-                    div.style.padding = "10px";
-                    div.style.borderLeft = "4px solid #34c759";
-                    div.innerHTML = `<b>${eleve.nom}</b> - ${eleve.classe} <br> <small>${new Date().toLocaleTimeString()}</small>`;
-                    log.prepend(div);
+                    if (verified) {
+                        resultMsg.innerHTML = `<div style="background:#22c55e; color:white; padding:15px; border-radius:12px; font-weight:800;">✅ IDENTIFIÉ : ${eleve.nom}</div>`;
+                        const entreesEl = document.getElementById('total-entrees');
+                        entreesEl.innerText = parseInt(entreesEl.innerText) + 1;
 
+                        const log = document.getElementById('scan-log');
+                        const div = document.createElement('div');
+                        div.className = 'glass-card';
+                        div.style.padding = "10px";
+                        div.style.borderLeft = "4px solid #22c55e";
+                        div.innerHTML = `<b>${eleve.nom}</b> - ${eleve.classe} <br> <small>${new Date().toLocaleTimeString()}</small>`;
+                        log.prepend(div);
+                    } else {
+                        resultMsg.innerHTML = `<div style="background:#ef4444; color:white; padding:15px; border-radius:12px; font-weight:800;">❌ VÉRIFICATION FACIALE ÉCHOUÉE</div>`;
+                        const alertesEl = document.getElementById('total-alertes');
+                        alertesEl.innerText = parseInt(alertesEl.innerText) + 1;
+                    }
                 } else {
                     // ❌ PAS DANS LA BASE
-                    resultMsg.innerHTML = `<span style="color:#ef4444; font-size: 1.2rem;">❌ INCONNU : ${idScanne}</span>`;
+                    resultMsg.innerHTML = `<span style="color:#ef4444; font-size: 1.2rem;">❌ INCONNU : ${queryIdent}</span>`;
                     const alertesEl = document.getElementById('total-alertes');
                     alertesEl.innerText = parseInt(alertesEl.innerText) + 1;
                 }
             } catch (err) {
+                console.error('processScan error', err);
                 resultMsg.innerHTML = "Erreur de connexion";
             }
 
             // Attendre 3 secondes avant le prochain scan
             setTimeout(() => {
-                isProcessing = false; 
+                isProcessing = false;
                 resultMsg.innerHTML = "Prêt à scanner...";
-            }, 3000); 
+            }, 3000);
         }
 
-        window.onload = () => {
+        // --- RECONNAISSANCE FACIALE ---
+        let faceModelsLoaded = false;
+        let faceMatcher = null;
+        let faceStream = null;
+        let faceActive = false;
+        const FACE_STORAGE_KEY = 'elytra_face_descriptors';
+
+        async function loadFaceModels() {
+            if (faceModelsLoaded) return;
+            const candidates = [
+                './weights',
+                'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights',
+                'https://justadudewhohacks.github.io/face-api.js/models',
+                'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights'
+            ];
+
+            let lastError = null;
+            for (const base of candidates) {
+                try {
+                    await Promise.all([
+                        faceapi.nets.tinyFaceDetector.loadFromUri(base),
+                        faceapi.nets.faceLandmark68Net.loadFromUri(base),
+                        faceapi.nets.faceRecognitionNet.loadFromUri(base)
+                    ]);
+                    faceModelsLoaded = true;
+                    return;
+                } catch (err) {
+                    console.warn('face-api models load failed from', base, err);
+                    lastError = err;
+                }
+            }
+
+            // If we reach here, all candidates failed
+            throw new Error('Échec du chargement des modèles face-api.js: ' + (lastError && lastError.message ? lastError.message : 'unknown'));
+        }
+
+        function getSavedFaceDescriptors() {
+            const stored = JSON.parse(localStorage.getItem(FACE_STORAGE_KEY) || '[]');
+            return stored.map(entry => new faceapi.LabeledFaceDescriptors(entry.label, entry.descriptors.map(d => new Float32Array(d))));
+        }
+
+        function updateFaceLabelList() {
+            const stored = JSON.parse(localStorage.getItem(FACE_STORAGE_KEY) || '[]');
+            const list = document.getElementById('face-label-list');
+            if (!list) return;
+            if (stored.length === 0) {
+                list.innerHTML = 'Visages connus : aucun';
+                return;
+            }
+            list.innerHTML = '<strong>Visages enregistrés :</strong><br>' + stored.map(v => `${v.label} — ${v.descriptors.length} échantillon(s)`).join('<br>');
+        }
+
+        async function rebuildFaceMatcher() {
+            const descriptors = getSavedFaceDescriptors();
+            faceMatcher = descriptors.length ? new faceapi.FaceMatcher(descriptors, 0.55) : null;
+            updateFaceLabelList();
+        }
+
+        async function startFaceRecognition() {
+            const status = document.getElementById('face-status');
+            if (faceActive) return notify('La reconnaissance est déjà active.');
+            status.innerText = "Chargement des modèles...";
+            try {
+                await loadFaceModels();
+            } catch (err) {
+                console.error('loadFaceModels failed', err);
+                notify("Impossible de charger les modèles de reconnaissance faciale", "error");
+                status.innerText = "Échec du chargement des modèles : " + (err && err.message ? err.message : String(err));
+                return;
+            }
+
+            try {
+                await stopQrCamera();
+            } catch(e) {}
+
+            try {
+                const video = document.getElementById('face-video');
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+                faceStream = stream;
+                video.srcObject = stream;
+                await video.play();
+                faceActive = true;
+                status.innerText = "Caméra active, détection en cours...";
+                await rebuildFaceMatcher();
+                recognizeFaces();
+            } catch (err) {
+                console.error('Face recognition error', err);
+                notify("Impossible d'ouvrir la caméra", "error");
+                status.innerText = "Erreur caméra.";
+            }
+        }
+
+        function stopFaceRecognition() {
+            if (!faceActive) return;
+            if (faceStream) faceStream.getTracks().forEach(t => t.stop());
+            faceActive = false;
+            const status = document.getElementById('face-status');
+            status.innerText = "Reconnaissance arrêtée.";
+            const canvas = document.getElementById('face-canvas');
+            if (canvas) {
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }
+            // restart QR scanner
             startCamera();
-        };
+        }
+
+        async function recognizeFaces() {
+            if (!faceActive) return;
+            const video = document.getElementById('face-video');
+            const canvas = document.getElementById('face-canvas');
+            if (!video || !canvas) return;
+
+            const displaySize = { width: video.videoWidth, height: video.videoHeight };
+            if (displaySize.width === 0 || displaySize.height === 0) {
+                setTimeout(recognizeFaces, 300);
+                return;
+            }
+
+            canvas.width = displaySize.width;
+            canvas.height = displaySize.height;
+            const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptors();
+            const resized = faceapi.resizeResults(detections, displaySize);
+
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            faceapi.draw.drawDetections(canvas, resized);
+
+            const status = document.getElementById('face-status');
+            if (resized.length === 0) {
+                status.innerText = "Aucun visage détecté.";
+            } else if (!faceMatcher) {
+                status.innerText = "Visage détecté, aucun modèle enregistré.";
+            } else {
+                const matches = resized.map(d => faceMatcher.findBestMatch(d.descriptor));
+                status.innerText = matches.map(m => m.label === 'unknown' ? 'Visage non reconnu' : `Reconnu : ${m.label}`).join(' / ');
+            }
+
+            setTimeout(() => {
+                if (faceActive) recognizeFaces();
+            }, 600);
+        }
+
+        async function registerFace() {
+            if (!faceActive) return notify("Active d'abord la caméra.", "error");
+            const label = prompt("Entrez l'identifiant ou le nom de l'élève (utilisez l'identifiant pour la vérif QR+visage) :");
+            if (!label) return;
+            const video = document.getElementById('face-video');
+            const detection = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
+            if (!detection) return notify("Aucun visage détecté.", "error");
+            const descriptor = Array.from(detection.descriptor);
+            const stored = JSON.parse(localStorage.getItem(FACE_STORAGE_KEY) || '[]');
+            const entry = stored.find(item => item.label === label);
+            if (entry) entry.descriptors.push(descriptor); else stored.push({ label, descriptors: [descriptor] });
+            localStorage.setItem(FACE_STORAGE_KEY, JSON.stringify(stored));
+            await rebuildFaceMatcher();
+            notify(`Visage enregistré pour ${label}`);
+        }
+
+        // Vérifie le visage pour un identifiant donné (utilisé après scan QR)
+        async function verifyFaceForID(identifiant) {
+            const status = document.getElementById('face-status') || document.getElementById('result-message');
+            if (!status) return false;
+            status.innerText = 'Préparation...';
+
+            try {
+                await loadFaceModels();
+                await rebuildFaceMatcher();
+            } catch (err) {
+                console.error('loadFaceModels failed', err);
+                status.innerText = 'Échec du chargement des modèles : ' + (err && err.message ? err.message : String(err));
+                return false;
+            }
+
+            const stored = JSON.parse(localStorage.getItem(FACE_STORAGE_KEY) || '[]');
+            const entry = stored.find(e => e.label === identifiant);
+            if (!entry) {
+                status.innerText = `Aucun profil facial pour ${identifiant}. Utilisez "Enregistrer visage".`;
+                return false;
+            }
+
+            try { await stopQrCamera(); } catch(e) {}
+
+            const video = document.getElementById('face-video');
+            let stream;
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+                faceStream = stream;
+                video.srcObject = stream;
+                await video.play();
+                faceActive = true;
+            } catch (err) {
+                console.error('getUserMedia error', err);
+                status.innerText = 'Erreur caméra: ' + (err.message || err);
+                return false;
+            }
+
+            status.innerText = 'Montrez votre visage pour vérification...';
+            if (!faceMatcher) await rebuildFaceMatcher();
+            let matched = false;
+            for (let i = 0; i < 10; i++) {
+                try {
+                    const detection = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
+                    if (detection) {
+                        const match = faceMatcher.findBestMatch(detection.descriptor);
+                        status.innerText = `Visage détecté — meilleure correspondance: ${match.label} (${match.distance.toFixed(2)})`;
+                        if (match.label === identifiant && match.distance < 0.6) { matched = true; break; }
+                    } else {
+                        status.innerText = 'Aucun visage détecté, ajuste ta position...';
+                    }
+                } catch (err) { console.warn('detection error', err); }
+                await new Promise(r => setTimeout(r, 600));
+            }
+
+            if (faceStream) faceStream.getTracks().forEach(t => t.stop());
+            faceActive = false;
+            startCamera();
+
+            if (matched) { status.innerText = '✅ Vérification faciale réussie.'; return true; }
+            status.innerText = '❌ Vérification faciale échouée.'; return false;
+        }
+
+        window.addEventListener('load', () => {
+            startCamera();
+            updateFaceLabelList();
+        });
     </script>
 </body>
 </html>
