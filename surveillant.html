@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ELYTRA - Console de Surveillance</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <style>
+        @keyframes blink {
+            0% { opacity: 1; }
+            50% { opacity: 0.3; }
+            100% { opacity: 1; }
+        }
+        
+        @media (min-width: 769px) {
+            .sidebar { position: fixed; left: -250px; top: 0; bottom: 0; width: 260px; z-index: 1000; transition: all 0.4s; box-shadow: 5px 0 20px rgba(0,0,0,0.1); }
+            .sidebar-trigger { position: fixed; left: 0; top: 0; bottom: 0; width: 15px; z-index: 999; }
+            .sidebar-trigger:hover + .sidebar, .sidebar:hover { left: 0; }
+            .main-content { margin-left: 0 !important; width: 100% !important; padding: 40px !important; }
+        }
+    </style>
+</head>
+<body class="admin-page">
+    <div class="app-container">
+        <div class="sidebar-trigger"></div>
+        <nav class="sidebar">   
+            <div class="logo">🦋 ELYTRA</div>
+            <ul class="nav-menu">
+                <li class="nav-item active" onclick="location.reload()">📸 Scanner</li>
+                <li class="nav-item" onclick="changeTab(this, 'gestion')">👥 Gestion</li>
+                <li class="nav-item" onclick="changeTab(this, 'saisie_note')">📝 Saisir Note</li>
+                <li class="nav-item" onclick="window.location.href='index.html'">🚪 Déconnexion</li>
+            </ul>
+        </nav>
+        
+        <main class="main-content" id="main-content" style="padding: 30px;">
+            <h1>Console de Surveillance</h1>
+            <div style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 30px;" class="grid-dash">
+                <section style="display: flex; flex-direction: column; gap: 20px;">
+                    <div class="card" style="padding: 0; overflow: hidden; border: 2px solid var(--accent-theme);">
+                        <div id="reader" style="width: 100%; background: #000;"></div>
+                        <div id="result-message" style="padding:20px; text-align:center; font-weight: 600;">Prêt à scanner...</div>
+                    </div>
+                    <div class="card" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; text-align: center;">
+                        <div><small>ENTRÉES</small><div id="total-entrees" style="font-size: 1.8rem; font-weight:800; color:#34c759;">0</div></div>
+                        <div><small>ALERTES</small><div id="total-alertes" style="font-size: 1.8rem; font-weight:800; color:#ef4444;">0</div></div>
+                    </div>
+                </section>
+                <section>
+                    <div class="card" style="height: 550px; display: flex; flex-direction: column;">
+                        <h3>Derniers passages</h3>
+                        <div id="scan-log" style="overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 12px;"></div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+    <script>
+        const html5QrCode = new Html5Qrcode("reader");
+        let isProcessing = false; 
+
+        function startCamera() {
+            const config = {
+                fps: 20,
+                qrbox: { width: 250, height: 250 }
+            };
+
+            // "environment" pour utiliser la caméra arrière du téléphone
+            html5QrCode.start(
+                { facingMode: "environment" }, 
+                config, 
+                (code) => { 
+                    if (isProcessing) return; 
+                    processScan(code); 
+                }
+            ).catch(err => {
+                console.error("Erreur caméra:", err);
+                document.getElementById('result-message').innerText = "Erreur caméra : Vérifiez les permissions.";
+            });
+        }
+
+        // FONCTION DE VÉRIFICATION DANS LA BASE DE DONNÉES
+        async function processScan(idScanne) {
+            isProcessing = true; 
+            const resultMsg = document.getElementById('result-message');
+            resultMsg.innerHTML = "🔍 Vérification en cours...";
+            
+            try {
+                // On cherche l'élève dans la table 'eleves'
+                const { data: eleve, error } = await supabaseClient
+                    .from('eleves')
+                    .select('*')
+                    .eq('identifiant', idScanne.trim())
+                    .single();
+
+                if (eleve) {
+                    // ✅ TROUVÉ DANS LA BASE
+                    resultMsg.innerHTML = `<span style="color:#34c759; font-size: 1.2rem;">✅ CORRECT : ${eleve.nom}</span>`;
+                    
+                    // Mise à jour du compteur
+                    const entreesEl = document.getElementById('total-entrees');
+                    entreesEl.innerText = parseInt(entreesEl.innerText) + 1;
+
+                    // Ajout au log
+                    const log = document.getElementById('scan-log');
+                    const div = document.createElement('div');
+                    div.className = 'glass-card';
+                    div.style.padding = "10px";
+                    div.style.borderLeft = "4px solid #34c759";
+                    div.innerHTML = `<b>${eleve.nom}</b> - ${eleve.classe} <br> <small>${new Date().toLocaleTimeString()}</small>`;
+                    log.prepend(div);
+
+                } else {
+                    // ❌ PAS DANS LA BASE
+                    resultMsg.innerHTML = `<span style="color:#ef4444; font-size: 1.2rem;">❌ INCONNU : ${idScanne}</span>`;
+                    const alertesEl = document.getElementById('total-alertes');
+                    alertesEl.innerText = parseInt(alertesEl.innerText) + 1;
+                }
+            } catch (err) {
+                resultMsg.innerHTML = "Erreur de connexion";
+            }
+
+            // Attendre 3 secondes avant le prochain scan
+            setTimeout(() => {
+                isProcessing = false; 
+                resultMsg.innerHTML = "Prêt à scanner...";
+            }, 3000); 
+        }
+
+        window.onload = () => {
+            startCamera();
+        };
+    </script>
+</body>
+</html>

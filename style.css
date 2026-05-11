@@ -1,0 +1,414 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap');
+
+/* --- SYSTÈME DE THÈMES --- */
+:root {
+    --bg-app: #05070a;
+    --card-bg: rgba(255, 255, 255, 0.03);
+    --text-main: #ffffff;
+    --accent-theme: #a855f7;
+}
+
+/* Thème Blanc */
+body.theme-white {
+    --bg-app: #f0f2f5;
+    --card-bg: rgba(255, 255, 255, 0.8);
+    --text-main: #1a1a1a;
+    --accent-theme: #6366f1;
+}
+
+/* Thème Violet */
+body.theme-purple {
+    --bg-app: #1e0a3c;
+    --card-bg: rgba(255, 255, 255, 0.07);
+    --text-main: #ffffff;
+    --accent-theme: #d8b4fe;
+}
+
+/* Thème Océan */
+body.theme-ocean {
+    --bg-app: #001219;
+    --card-bg: rgba(0, 95, 115, 0.2);
+    --text-main: #e9d8a6;
+    --accent-theme: #94d2bd;
+}
+
+/* Application des variables */
+body {
+    background: var(--bg-app) !important;
+    color: var(--text-main) !important;
+    transition: all 0.4s ease;
+}
+
+.glass-card {
+    background: var(--card-bg) !important;
+    color: var(--text-main) !important;
+}
+
+h1, h2, b, span { color: var(--text-main); }
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+body {
+    margin: 0;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background: var(--bg-dark);
+    background-image: 
+        radial-gradient(circle at 20% 30%, rgba(99, 102, 241, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 80% 70%, rgba(168, 85, 247, 0.08) 0%, transparent 40%);
+    color: white;
+    min-height: 100vh;
+    overflow: hidden;
+}
+
+/* --- GLASS CARD CORE --- */
+.glass-card {
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid var(--glass-border);
+    border-radius: 30px;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.glass-card::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: var(--glass-shimmer);
+    pointer-events: none;
+}
+
+.glass-card:hover {
+    transform: translateY(-5px);
+    border-color: rgba(255, 255, 255, 0.2);
+    box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+}
+
+/* --- AUTH SCREEN --- */
+.auth-screen { height: 100vh; display: flex; align-items: center; justify-content: center; }
+
+.login-input-group {
+    background: rgba(238, 255, 0, 0.05);
+    border-radius: 20px;
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    border: 1px solid var(--glass-border);
+    margin-bottom: 15px;
+}
+
+.login-input-group input {
+    background: transparent;
+    border: none;
+    color: white;
+    outline: none;
+    flex: 1;
+    font-size: 1rem;
+}
+
+.login-btn-circle {
+    background: white;
+    width: 45px;
+    height: 45px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: 0.3s;
+    border: none;
+}
+
+.login-btn-circle:hover { transform: scale(1.1); background: #f0f0f0; }
+
+/* --- APP LAYOUT --- */
+.app-container { display: flex; height: 100vh; }
+
+/* --- SIDEBAR DYNAMIQUE --- */
+.sidebar {
+    position: fixed;
+    left: 0; top: 0; bottom: 0;
+    width: 280px;
+    background: rgba(10, 12, 18, 0.95);
+    backdrop-filter: blur(40px);
+    border-right: 1px solid var(--glass-border);
+    padding: 30px;
+    display: flex;
+    flex-direction: column;
+    z-index: 1;
+    transform: translateX(-95%); /* Cachée par défaut */
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}   
+
+/* Le contenu principal prend tout l'écran car la side est par-dessus */
+.main-content {
+    margin-left: 0 !important;
+    width: 100vw;
+}
+
+/* Zone invisible de 20px pour détecter la souris */
+.sidebar-trigger {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 20px;
+    z-index: 999;
+}
+
+/* Quand on survole le trigger OU la sidebar, elle sort ! */
+.sidebar-trigger:hover + .sidebar, 
+.sidebar:hover {
+    transform: translateX(0);
+}
+
+/* Le contenu principal prend tout l'écran car la side est par-dessus */
+.main-content {
+    margin-left: 0 !important;
+    width: 100vw;
+}
+.main-content { flex: 1; padding: 40px; overflow-y: auto; }
+
+.nav-item {
+    padding: 18px 20px;
+    border-radius: 18px;
+    cursor: pointer;
+    color: rgba(255,255,255,0.5);
+    font-weight: 600;
+    transition: 0.3s;
+}
+
+.nav-item:hover { background: rgba(255,255,255,0.05); color: white; }
+.nav-item.active { background: white; color: black; }
+
+h1 {
+    font-size: 2.2rem;
+    font-weight: 800;
+    letter-spacing: -1px;
+    margin-bottom: 30px;
+}
+
+/* --- MOBILE --- */
+@media (max-width: 768px) {
+    .sidebar { display: none; }
+    .main-content { padding: 20px; padding-bottom: 100px; }
+    .nav-mobile {
+        display: flex; position: fixed; bottom: 20px; left: 20px; right: 20px;
+        height: 70px; background: rgba(255,255,255,0.05);
+        backdrop-filter: blur(20px); border: 1px solid var(--glass-border);
+        border-radius: 25px; justify-content: space-around; align-items: center; z-index: 1000;
+    }
+}
+
+/* Pour que le menu pousse le profil vers le bas */
+.nav-menu {
+    list-style: none;
+    padding: 0;
+    margin-top: 20px;
+    flex-grow: 1; /* C'est ça le "ressort" ! */
+    display: flex;
+    flex-direction: column;
+}
+
+/* On stylise un peu le bloc profil pour qu'il soit propre en bas */
+.user-profile-box {
+    margin-top: auto; /* Sécurité supplémentaire */
+    padding: 20px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 20px;
+}
+
+.logout-btn {
+    width: 100%; 
+    margin-top: 10px; 
+    background: #ef444420; 
+    color: #ef4444; 
+    border: none; 
+    padding: 10px; 
+    border-radius: 12px; 
+    font-weight: 800; 
+    cursor: pointer;
+}
+
+/* --- NAVIGATION MOBILE --- */
+.nav-mobile {
+    display: none; /* Caché sur PC */
+}
+
+@media (max-width: 768px) {
+    /* On cache la sidebar sur mobile */
+    .sidebar { display: none !important; }
+    .sidebar-trigger { display: none; }
+    
+    /* On ajuste le contenu pour pas qu'il soit caché par la barre du bas */
+    .main-content { 
+        padding-bottom: 100px !important; 
+        width: 100vw !important;
+        margin: 0 !important;
+    }
+
+    /* La barre du bas */
+    .nav-mobile {
+        display: flex;
+        position: fixed;
+        bottom: 20px;
+        left: 20px;
+        right: 20px;
+        height: 70px;
+        background: rgba(255, 255, 255, 0.05);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 25px;
+        justify-content: space-around;
+        align-items: center;
+        z-index: 9999;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+
+    .nav-mobile-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        color: rgba(255,255,255,0.5);
+        transition: 0.3s;
+        flex: 1;
+    }
+
+    .nav-mobile-item span { font-size: 1.2rem; }
+    .nav-mobile-item small { font-size: 0.6rem; margin-top: 4px; font-weight: 600; }
+
+    .nav-mobile-item.active {
+        color: #a855f7; /* Violet néon pour l'onglet actif */
+        transform: translateY(-5px);
+    }
+}
+
+/* Conteneur du champ de saisie */
+.input-group {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    margin-bottom: 15px;
+}
+
+/* Le champ mot de passe lui-même */
+.input-group input {
+    width: 100%;
+    padding: 15px 60px 15px 20px; /* On laisse de la place à droite pour le bouton */
+    border-radius: 15px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: white;
+    outline: none;
+}
+
+/* Le bouton blanc avec la flèche */
+.login-btn {
+    position: absolute;
+    right: 8px; /* Toujours collé à droite */
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: white;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform 0.2s ease;
+}
+
+.login-btn:active {
+    transform: scale(0.9); /* Effet de clic sur mobile */
+}
+
+.login-btn svg, .login-btn span {
+    color: black;
+    font-size: 1.2rem;
+    line-height: 0;
+}
+
+@keyframes blink {
+    0% { opacity: 1; }
+    50% { opacity: 0.3; }
+    100% { opacity: 1; }
+}
+
+/* --- RESPONSIVE ACCUEIL --- */
+
+/* Version PC (par défaut dans le JS, on ajuste juste les détails) */
+@media (min-width: 769px) {
+    .accueil-layout {
+        /* Sur PC, ça reste côte à côte */
+        flex-direction: row;
+    }
+}
+
+/* Version MOBILE */
+@media (max-width: 768px) {
+    .accueil-layout {
+        /* Sur mobile, on empile si jamais */
+        flex-direction: column;
+    }
+
+    /* ⚠️ C'est ici la magie : on CACHE la colonne EDT sur mobile */
+    .edt-preview-column {
+        display: none !important;
+    }
+
+    /* La colonne de gauche reprend toute la largeur sur mobile */
+    .id-card-column {
+        flex: 1 !important;
+        width: 100% !important;
+    }
+}
+
+body.dark-mode {
+    background: #000000 !important;
+}
+body.dark-mode .glass-card {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}   
+
+/* --- BOUTON DÉCONNEXION STYLE PREMIUM --- */
+.logout-btn {
+    width: 100%;
+    margin-top: auto; /* Le pousse en bas de la sidebar */
+    background: rgba(239, 68, 68, 0.1); /* Rouge très transparent */
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    padding: 15px;
+    border-radius: 18px;
+    font-weight: 800;
+    font-size: 0.9rem;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    text-transform: uppercase;
+}
+
+.logout-btn:hover {
+    background: #ef4444; /* Devient rouge plein au survol */
+    color: white;
+    box-shadow: 0 10px 20px rgba(239, 68, 68, 0.3);
+    transform: translateY(-2px);
+}
+
+.logout-btn:active {
+    transform: scale(0.95);
+}
+
+/* Petit icône de sortie (optionnel via CSS) */
+.logout-btn::before {
+    content: '➔';
+    font-size: 1.1rem;
+}

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ELYTRA - Espace Élève</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <div class="sidebar-trigger"></div>
+
+        <nav class="sidebar">   
+            <div class="logo">🦋 ELYTRA</div>
+            <ul class="nav-menu">
+                <li class="nav-item active" onclick="changeTab(this, 'accueil')">🏠 Accueil</li>
+                <li class="nav-item" onclick="changeTab(this, 'edt')">📅 Emploi du temps</li>
+                <li class="nav-item" onclick="changeTab(this, 'notes')">📊 Notes</li>
+                <li class="nav-item" onclick="changeTab(this, 'settings')">⚙️ Réglages</li>
+            </ul>
+
+            <div class="user-profile-box">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <div style="flex:1">
+                        <div id="display-user-name" style="font-weight:700; font-size:0.9rem;">Élève</div>
+                        <div id="display-user-class" style="font-size:0.7rem; color:rgba(255,255,255,0.5)">Classe</div>
+                    </div>
+                </div>
+                <button onclick="window.location.href='index.html'" style="width:100%; margin-top:10px; background:#ef444420; color:#ef4444; border:none; padding:8px; border-radius:12px; cursor:pointer;">DÉCONNEXION</button>
+            </div>
+        </nav>
+
+        <main class="main-content" id="main-content"></main>
+    </div>
+
+    <script src="script.js"></script>
+    <nav class="nav-mobile">
+        <div class="nav-mobile-item active" onclick="changeTab(this, 'accueil')">
+            <span>🏠</span><small>Accueil</small>
+        </div>
+        <div class="nav-mobile-item" onclick="changeTab(this, 'edt')">
+            <span>📅</span><small>EDT</small>
+        </div>
+        <div class="nav-mobile-item" onclick="changeTab(this, 'notes')">
+            <span>📊</span><small>Notes</small>
+        </div>
+        <div class="nav-mobile-item" onclick="changeTab(this, 'settings')">
+            <span>⚙️</span><small>Réglages</small>
+        </div>
+    </nav>
+</body>
+</html>
