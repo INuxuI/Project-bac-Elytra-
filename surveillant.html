@@ -28,8 +28,12 @@
         <div class="sidebar-trigger"></div>
         <nav class="sidebar">   
             <div class="logo">🦋 ELYTRA</div>
+            <div style="padding: 20px 15px; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 20px;">
+                <div id="display-user-name" style="font-weight: 800; font-size: 1rem;">Staff</div>
+                <div id="display-user-class" style="font-size: 0.8rem; opacity: 0.6;">Surveillant</div>
+            </div>
             <ul class="nav-menu">
-                <li class="nav-item active" onclick="location.reload()">📸 Scanner</li>
+                <li class="nav-item active" onclick="changeTab(this, 'scanner')">📸 Scanner</li>
                 <li class="nav-item" onclick="changeTab(this, 'gestion')">👥 Gestion</li>
                 <li class="nav-item" onclick="changeTab(this, 'saisie_note')">📝 Saisir Note</li>
                 <li class="nav-item" onclick="window.location.href='index.html'">🚪 Déconnexion</li>
@@ -37,43 +41,7 @@
         </nav>
         
         <main class="main-content" id="main-content" style="padding: 30px;">
-            <h1>Console de Surveillance</h1>
-            <div style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 30px;" class="grid-dash">
-                <section style="display: flex; flex-direction: column; gap: 20px;">
-                    <div class="card" style="padding: 0; overflow: hidden; border: 2px solid var(--accent-theme);">
-                        <div id="reader" style="width: 100%; background: #000;"></div>
-                        <div id="result-message" style="padding:20px; text-align:center; font-weight: 600;">Prêt à scanner...</div>
-                    </div>
-
-                    <div class="card" style="padding: 25px; border: 2px solid var(--accent-theme);">
-                        <h3 style="margin-top:0; margin-bottom:15px;">Reconnaissance faciale</h3>
-                        <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start;">
-                            <div style="flex: 1; min-width: 280px; position: relative;">
-                                <video id="face-video" autoplay muted playsinline style="width: 100%; border-radius: 22px; background: #000; display: block;"></video>
-                                <canvas id="face-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;"></canvas>
-                            </div>
-                            <div style="flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: 12px;">
-                                <button id="btn-start-face" onclick="startFaceRecognition()" style="padding:15px; border-radius:15px; border:none; background:#2563eb; color:white; font-weight:800; cursor:pointer;">Démarrer la reconnaissance</button>
-                                <button id="btn-register-face" onclick="registerFace()" style="padding:15px; border-radius:15px; border:none; background:#4ade80; color:#0f172a; font-weight:800; cursor:pointer;">Enregistrer visage</button>
-                                <button id="btn-stop-face" onclick="stopFaceRecognition()" style="padding:15px; border-radius:15px; border:none; background:#ef4444; color:white; font-weight:800; cursor:pointer;">Arrêter la reconnaissance</button>
-                                <div id="face-status" style="padding:15px; background: rgba(255,255,255,0.05); border-radius: 20px; min-height: 90px; color:white;">Aucun visage reconnu.</div>
-                                <div id="face-label-list" style="padding:15px; background: rgba(255,255,255,0.05); border-radius: 20px; color:white; max-height: 220px; overflow-y: auto;">Visages connus : aucun</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="card" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; text-align: center;">
-                        <div><small>ENTRÉES</small><div id="total-entrees" style="font-size: 1.8rem; font-weight:800; color:#34c759;">0</div></div>
-                        <div><small>ALERTES</small><div id="total-alertes" style="font-size: 1.8rem; font-weight:800; color:#ef4444;">0</div></div>
-                    </div>
-                </section>
-                <section>
-                    <div class="card" style="height: 550px; display: flex; flex-direction: column;">
-                        <h3>Derniers passages</h3>
-                        <div id="scan-log" style="overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 12px;"></div>
-                    </div>
-                </section>
-            </div>
+            <!-- Le contenu est généré dynamiquement par changeTab() -->
         </main>
     </div>
 
@@ -116,20 +84,24 @@
             isProcessing = true;
             const resultMsg = document.getElementById('result-message');
             resultMsg.innerHTML = "🔍 Vérification du QR...";
+            console.log('[processScan] Raw QR data:', idScanne);
 
             try {
                 // Try dynamic QR payload first (format: identifiant:timeslice:hash)
                 let identified = null;
                 try {
                     if (typeof verifyDynamicQrPayload === 'function' && idScanne.includes(':')) {
+                        console.log('[processScan] Attempting dynamic QR verification...');
                         identified = await verifyDynamicQrPayload(idScanne);
+                        console.log('[processScan] Dynamic QR result:', identified);
                     }
                 } catch (e) {
-                    console.warn('verifyDynamicQrPayload failed', e);
+                    console.warn('[processScan] verifyDynamicQrPayload error', e);
                 }
 
                 if (!identified && idScanne.includes(':')) {
                     // Looks like a dynamic QR but failed verification
+                    console.log('[processScan] Dynamic QR format detected but verification failed');
                     resultMsg.innerHTML = `<span style="color:#ef4444; font-size: 1rem;">❌ QR invalide ou expiré</span>`;
                     const alertesEl = document.getElementById('total-alertes');
                     alertesEl.innerText = parseInt(alertesEl.innerText) + 1;
@@ -141,6 +113,7 @@
                 }
 
                 const queryIdent = identified || idScanne.trim();
+                console.log('[processScan] Query identifiant:', queryIdent);
 
                 // On cherche l'élève dans la table 'eleves'
                 const { data: eleve, error } = await supabaseClient
@@ -150,11 +123,13 @@
                     .single();
 
                 if (eleve) {
+                    console.log('[processScan] Élève trouvé:', eleve.nom);
                     // Demande la vérification faciale après QR valide
                     resultMsg.innerHTML = `<span style="color:#34c759; font-size: 1rem;">QR OK : ${eleve.nom} — Montre ton visage...</span>`;
                     const verified = await verifyFaceForID(eleve.identifiant);
 
                     if (verified) {
+                        console.log('[processScan] ✅ Face verification successful');
                         resultMsg.innerHTML = `<div style="background:#22c55e; color:white; padding:15px; border-radius:12px; font-weight:800;">✅ IDENTIFIÉ : ${eleve.nom}</div>`;
                         const entreesEl = document.getElementById('total-entrees');
                         entreesEl.innerText = parseInt(entreesEl.innerText) + 1;
@@ -167,18 +142,20 @@
                         div.innerHTML = `<b>${eleve.nom}</b> - ${eleve.classe} <br> <small>${new Date().toLocaleTimeString()}</small>`;
                         log.prepend(div);
                     } else {
+                        console.log('[processScan] ❌ Face verification failed');
                         resultMsg.innerHTML = `<div style="background:#ef4444; color:white; padding:15px; border-radius:12px; font-weight:800;">❌ VÉRIFICATION FACIALE ÉCHOUÉE</div>`;
                         const alertesEl = document.getElementById('total-alertes');
                         alertesEl.innerText = parseInt(alertesEl.innerText) + 1;
                     }
                 } else {
+                    console.log('[processScan] ❌ Élève not found:', queryIdent);
                     // ❌ PAS DANS LA BASE
                     resultMsg.innerHTML = `<span style="color:#ef4444; font-size: 1.2rem;">❌ INCONNU : ${queryIdent}</span>`;
                     const alertesEl = document.getElementById('total-alertes');
                     alertesEl.innerText = parseInt(alertesEl.innerText) + 1;
                 }
             } catch (err) {
-                console.error('processScan error', err);
+                console.error('[processScan] error', err);
                 resultMsg.innerHTML = "Erreur de connexion";
             }
 
@@ -469,8 +446,13 @@
         }
 
         window.addEventListener('load', () => {
-            startCamera();
-            updateFaceLabelList();
+            if (typeof changeTab === 'function') {
+                changeTab(document.querySelector('[onclick*="scanner"]'), 'scanner');
+            } else {
+                // Fallback if script.js didn't load
+                startCamera();
+                updateFaceLabelList();
+            }
         });
     </script>
 </body>

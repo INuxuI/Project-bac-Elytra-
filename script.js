@@ -81,7 +81,7 @@ async function startDynamicQr(elOrId, identifiant, intervalSeconds = QR_ROTATE_S
     return rec;
 }
 
-async function verifyDynamicQrPayload(payload, intervalSeconds = QR_ROTATE_SECONDS, tolerance = 1) {
+async function verifyDynamicQrPayload(payload, intervalSeconds = QR_ROTATE_SECONDS, tolerance = 2) {
     if (!payload || typeof payload !== 'string') return null;
     const parts = payload.split(':');
     if (parts.length !== 3) return null;
@@ -89,15 +89,26 @@ async function verifyDynamicQrPayload(payload, intervalSeconds = QR_ROTATE_SECON
     if (!identifiant || !timesliceStr || !hash) return null;
     const timeslice = parseInt(timesliceStr, 10);
     if (isNaN(timeslice)) return null;
+    
+    console.log(`[QR Verify] Payload: ${identifiant}:${timesliceStr}:${hash.substring(0, 8)}...`);
+    console.log(`[QR Verify] Interval: ${intervalSeconds}s, Tolerance: ${tolerance}`);
+    
     for (let diff = -tolerance; diff <= tolerance; diff++) {
         const ts = timeslice + diff;
         const expected = await sha256Hex(`${identifiant}:${ts}:${QR_SECRET}`);
         if (expected === hash) {
             const nowSlice = Math.floor(Date.now() / (intervalSeconds * 1000));
-            if (Math.abs(nowSlice - timeslice) <= tolerance) return identifiant;
-            else return null;
+            console.log(`[QR Verify] ✅ Hash matched at timeslice ${ts}, now=${nowSlice}, diff from now=${Math.abs(nowSlice - timeslice)}`);
+            if (Math.abs(nowSlice - timeslice) <= tolerance) {
+                console.log(`[QR Verify] ✅ Valid - identifiant: ${identifiant}`);
+                return identifiant;
+            } else {
+                console.log(`[QR Verify] ❌ Too old/new - timeslice diff too large`);
+                return null;
+            }
         }
     }
+    console.log(`[QR Verify] ❌ No hash match found for any timeslice in range`);
     return null;
 }
 
@@ -257,7 +268,52 @@ async function changeTab(el, key) {
     const jourNom = dateSelectionnee.toLocaleDateString('fr-FR', { weekday: 'long' }).toLowerCase();
     const coursDuJour = CONFIG_DESIGN.edt[jourNom] || [];
 
-    if (key === 'accueil') {
+    if (key === 'scanner') {
+        container.innerHTML = `
+            <h1>📸 Console de Surveillance</h1>
+            <div style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 30px;" class="grid-dash">
+                <section style="display: flex; flex-direction: column; gap: 20px;">
+                    <div class="card" style="padding: 0; overflow: hidden; border: 2px solid var(--accent-theme);">
+                        <div id="reader" style="width: 100%; background: #000;"></div>
+                        <div id="result-message" style="padding:20px; text-align:center; font-weight: 600;">Prêt à scanner...</div>
+                    </div>
+
+                    <div class="card" style="padding: 25px; border: 2px solid var(--accent-theme);">
+                        <h3 style="margin-top:0; margin-bottom:15px;">Reconnaissance faciale</h3>
+                        <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start;">
+                            <div style="flex: 1; min-width: 280px; position: relative;">
+                                <video id="face-video" autoplay muted playsinline style="width: 100%; border-radius: 22px; background: #000; display: block;"></video>
+                                <canvas id="face-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;"></canvas>
+                            </div>
+                            <div style="flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: 12px;">
+                                <button id="btn-start-face" onclick="startFaceRecognition()" style="padding:15px; border-radius:15px; border:none; background:#2563eb; color:white; font-weight:800; cursor:pointer;">Démarrer la reconnaissance</button>
+                                <button id="btn-register-face" onclick="registerFace()" style="padding:15px; border-radius:15px; border:none; background:#4ade80; color:#0f172a; font-weight:800; cursor:pointer;">Enregistrer visage</button>
+                                <button id="btn-stop-face" onclick="stopFaceRecognition()" style="padding:15px; border-radius:15px; border:none; background:#ef4444; color:white; font-weight:800; cursor:pointer;">Arrêter la reconnaissance</button>
+                                <div id="face-status" style="padding:15px; background: rgba(255,255,255,0.05); border-radius: 20px; min-height: 90px; color:white;">Aucun visage reconnu.</div>
+                                <div id="face-label-list" style="padding:15px; background: rgba(255,255,255,0.05); border-radius: 20px; color:white; max-height: 220px; overflow-y: auto;">Visages connus : aucun</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; text-align: center;">
+                        <div><small>ENTRÉES</small><div id="total-entrees" style="font-size: 1.8rem; font-weight:800; color:#34c759;">0</div></div>
+                        <div><small>ALERTES</small><div id="total-alertes" style="font-size: 1.8rem; font-weight:800; color:#ef4444;">0</div></div>
+                    </div>
+                </section>
+                <section>
+                    <div class="card" style="height: 550px; display: flex; flex-direction: column;">
+                        <h3>Derniers passages</h3>
+                        <div id="scan-log" style="overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 12px;"></div>
+                    </div>
+                </section>
+            </div>`;
+        setTimeout(() => {
+            startCamera();
+            updateFaceLabelList();
+        }, 200);
+    }
+
+    else if (key === 'accueil') {
         container.innerHTML = `
             <h1>Bonjour, ${user.prenom} 👋</h1>
             <div class="accueil-layout" style="display: flex; gap: 25px; align-items: start; flex-wrap:wrap;">
@@ -329,6 +385,64 @@ async function changeTab(el, key) {
         mesNotes.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).forEach(n => {
             html += `<div class="glass-card" style="padding:25px; margin-bottom:15px;"><div style="font-size:0.7rem; opacity:0.5;">${n.matiere}</div><div style="font-size:2rem; font-weight:800; margin:10px 0;">${n.valeur}</div><div style="font-size:0.8rem; opacity:0.3;">${n.date}</div></div>`;
         });
+        container.innerHTML = html;
+    }
+
+    else if (key === 'gestion') {
+        container.innerHTML = "<h1>👥 Gestion des Élèves</h1><p>Chargement...</p>";
+        const { data: eleves } = await supabaseClient.from('eleves').select('*');
+        let html = `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:30px; flex-wrap:wrap;"><h1>👥 Gestion des Élèves</h1><button onclick="document.getElementById('form-add-eleve').style.display = document.getElementById('form-add-eleve').style.display === 'none' ? 'block' : 'none';" style="padding:12px 25px; background:var(--accent-theme); color:white; border:none; border-radius:12px; font-weight:800; cursor:pointer;">+ Ajouter</button></div>`;
+        
+        html += `<div id="form-add-eleve" style="display:none; background:rgba(255,255,255,0.05); padding:25px; border-radius:15px; margin-bottom:30px; max-width:500px;">
+            <h3 style="margin-top:0;">Nouvel élève</h3>
+            <input type="text" id="new-nom" placeholder="Nom" style="width:100%; padding:12px; margin-bottom:10px; border-radius:10px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:white;">
+            <input type="text" id="new-classe" placeholder="Classe" style="width:100%; padding:12px; margin-bottom:10px; border-radius:10px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:white;">
+            <input type="text" id="new-id" placeholder="Identifiant (ex: eleve001)" style="width:100%; padding:12px; margin-bottom:10px; border-radius:10px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:white;">
+            <input type="email" id="new-email" placeholder="Email (optionnel)" style="width:100%; padding:12px; margin-bottom:10px; border-radius:10px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:white;">
+            <button onclick="ajouterEleveDB()" style="width:100%; padding:12px; background:#34c759; color:white; border:none; border-radius:10px; font-weight:800; cursor:pointer;">AJOUTER</button>
+        </div>`;
+
+        if (eleves && eleves.length > 0) {
+            html += `<div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap:20px;">`;
+            eleves.forEach(e => {
+                html += `<div class="glass-card" style="padding:20px;">
+                    <div style="display:flex; justify-content:space-between; align-items:start;">
+                        <div>
+                            <div style="font-size:1.1rem; font-weight:800;">${e.nom}</div>
+                            <div style="font-size:0.8rem; opacity:0.6; margin-top:5px;">${e.classe}</div>
+                            <div style="font-size:0.7rem; opacity:0.4; margin-top:8px;">ID: ${e.identifiant}</div>
+                        </div>
+                        <button onclick="supprimerEleve('${e.identifiant}')" style="background:#ef4444; color:white; border:none; padding:8px 12px; border-radius:8px; cursor:pointer; font-weight:800; font-size:0.8rem;">SUPPRIMER</button>
+                    </div>
+                </div>`;
+            });
+            html += `</div>`;
+        } else {
+            html += `<div class="glass-card" style="padding:40px; text-align:center; opacity:0.5;">Aucun élève enregistré.</div>`;
+        }
+        container.innerHTML = html;
+    }
+
+    else if (key === 'saisie_note') {
+        container.innerHTML = "<h1>📝 Saisir une Note</h1><p>Chargement...</p>";
+        const { data: eleves } = await supabaseClient.from('eleves').select('*');
+        let html = `<h1>📝 Saisir une Note</h1>`;
+        
+        if (eleves && eleves.length > 0) {
+            html += `<div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:15px;">`;
+            eleves.forEach(e => {
+                html += `<div class="glass-card" style="padding:20px; display:flex; flex-direction:column; justify-content:space-between;">
+                    <div>
+                        <div style="font-size:1.1rem; font-weight:800;">${e.nom}</div>
+                        <div style="font-size:0.8rem; opacity:0.6; margin-top:5px;">${e.classe}</div>
+                    </div>
+                    <button onclick="ouvrirFormNote('${e.identifiant}', '${e.nom}')" style="margin-top:15px; padding:12px; background:var(--accent-theme); color:white; border:none; border-radius:10px; font-weight:800; cursor:pointer;">+ Ajouter Note</button>
+                </div>`;
+            });
+            html += `</div><div id="form-container-note" style="margin-top:30px;"></div>`;
+        } else {
+            html += `<div class="glass-card" style="padding:40px; text-align:center; opacity:0.5;">Aucun élève enregistré.</div>`;
+        }
         container.innerHTML = html;
     }
 
